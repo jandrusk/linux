@@ -12,6 +12,7 @@
 #define __AA_MATCH_H
 
 #include <linux/kref.h>
+#include <linux/overflow.h>
 
 #define DFA_NOMATCH			0
 #define DFA_START			1
@@ -120,7 +121,16 @@ struct aa_dfa {
 
 static inline size_t table_size(size_t len, size_t el_size)
 {
-	return ALIGN(sizeof(struct table_header) + len * el_size, 8);
+	size_t size;
+
+	size = size_add(sizeof(struct table_header), size_mul(len, el_size));
+	/*
+	 * ALIGN(size, 8) adds up to 7 bytes; reject if that would wrap.
+	 * Return 0 on overflow so callers fail closed before allocating.
+	 */
+	if (size == SIZE_MAX || size > SIZE_MAX - 7)
+		return 0;
+	return ALIGN(size, 8);
 }
 
 #define aa_state_t unsigned int
